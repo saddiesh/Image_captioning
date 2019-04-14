@@ -10,36 +10,34 @@ from pycocoevalcap.meteor.meteor import Meteor
 def score(ref, hypo):
     scorers = [
         (Bleu(4),["Bleu_1","Bleu_2","Bleu_3","Bleu_4"]),
-        (Meteor(),"METEOR"),
         (Rouge(),"ROUGE_L"),
-        (Cider(),"CIDEr")
+        (Cider(),"CIDEr"),
     ]
     final_scores = {}
     for scorer,method in scorers:
         score,scores = scorer.compute_score(ref,hypo)
+        print(method, score)
         if type(score)==list:
             for m,s in zip(method,score):
                 final_scores[m] = s
         else:
             final_scores[method] = score
-
+        print(final_scores)
     return final_scores
     
 
-def evaluate(data_path='./data', split='val', get_scores=False):
-    reference_path = os.path.join(data_path, "%s/%s.references.pkl" %(split, split))
-    candidate_path = os.path.join(data_path, "%s/%s.candidate.captions.pkl" %(split, split))
-    
-    # load caption data
-    with open(reference_path, 'rb') as f:
-        reff = pickle.load(f)
-        keys =[key for key in reff.keys()]
-        # keys = keys[:1000]
-        ref = {}
-        for x in keys:
-            ref[x] = reff[x]
+def evaluate(ref_path, cand_path, get_scores=False):
 
-    with open(candidate_path, 'rb') as f:
+    # load caption data
+    with open(ref_path, 'rb') as f:
+        reff = pickle.load(f)
+
+    # make ref dict:
+    ref = {}
+    for i, caption in enumerate(reff):
+        ref[i] = [caption]
+
+    with open(cand_path, 'rb') as f:
         cand = pickle.load(f)
     
     # make dictionary
@@ -55,7 +53,7 @@ def evaluate(data_path='./data', split='val', get_scores=False):
     print ('Bleu_2:\t',final_scores['Bleu_2'])
     print ('Bleu_3:\t',final_scores['Bleu_3'])
     print ('Bleu_4:\t',final_scores['Bleu_4'])
-    print ('METEOR:\t',final_scores['METEOR'])
+    #print ('METEOR:\t',final_scores['METEOR'])
     print ('ROUGE_L:',final_scores['ROUGE_L'])
     print ('CIDEr:\t',final_scores['CIDEr'])
     

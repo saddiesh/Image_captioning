@@ -29,6 +29,7 @@ def load_coco_data(data_path='./data', split='train'):
     if split == 'train':       
         with open(os.path.join(data_path, 'word_to_idx.pkl'), 'rb') as f:
             data['word_to_idx'] = pickle.load(f)
+            print(data['word_to_idx'])
 
           
     for k, v in data.items():

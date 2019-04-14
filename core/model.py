@@ -66,13 +66,16 @@ class CaptionGenerator(object):
 
             w_c = tf.get_variable('w_c', [self.D, self.H], initializer=self.weight_initializer)
             b_c = tf.get_variable('b_c', [self.H], initializer=self.const_initializer)
+            #print_w_c = tf.Print(w_c, [w_c], '_get_initial_lstm', summarize=20, first_n=3)
             c = tf.nn.tanh(tf.matmul(features_mean, w_c) + b_c)
+            # c = tf.Print(c, [c], '_get_initial_lstm=', summarize=20, first_n=3)
             return c, h
 
     def _word_embedding(self, inputs, reuse=False):
         with tf.variable_scope('word_embedding', reuse=reuse):
             w = tf.get_variable('w', [self.V, self.M], initializer=self.emb_initializer)
             x = tf.nn.embedding_lookup(w, inputs, name='word_vector')  # (N, T, M) or (N, M)
+            # x = tf.Print(x, [x], '_word_embedding=', summarize=20, first_n=3)
             return x
 
     def _project_features(self, features):
@@ -81,6 +84,7 @@ class CaptionGenerator(object):
             features_flat = tf.reshape(features, [-1, self.D])
             features_proj = tf.matmul(features_flat, w)
             features_proj = tf.reshape(features_proj, [-1, self.L, self.D])
+            # features_proj = tf.Print(features_proj, [features_proj], 'features_proj=', summarize=20, first_n=3)
             return features_proj
 
     def _attention_layer(self, features, features_proj, h, reuse=False):
@@ -91,8 +95,11 @@ class CaptionGenerator(object):
 
             h_att = tf.nn.relu(features_proj + tf.expand_dims(tf.matmul(h, w), 1) + b)    # (N, L, D)
             out_att = tf.reshape(tf.matmul(tf.reshape(h_att, [-1, self.D]), w_att), [-1, self.L])   # (N, L)
+            # out_att = tf.Print(out_att, [out_att], '_attention_layer_outatt=', summarize=20, first_n=3)
             alpha = tf.nn.softmax(out_att)
+            # alpha = tf.Print(alpha, [alpha], '_attention_layer_alpha=', summarize=20, first_n=3)
             context = tf.reduce_sum(features * tf.expand_dims(alpha, 2), 1, name='context')   #(N, D)
+            # context = tf.Print(context, [context], '_attention_laye_contextr=', summarize=20, first_n=3)
             return context, alpha
 
     def _selector(self, context, h, reuse=False):
@@ -124,7 +131,10 @@ class CaptionGenerator(object):
 
             if dropout:
                 h_logits = tf.nn.dropout(h_logits, 0.5)
+
+            # h_logits = tf.Print(h_logits, [h_logits], '_decode_lstm_h_logits=', summarize=20, first_n=3)
             out_logits = tf.matmul(h_logits, w_out) + b_out
+            # out_logits = tf.Print(out_logits, [out_logits], '_decode_lstm_out_logits=', summarize=90, first_n=3)
             return out_logits
 
     def _batch_norm(self, x, mode='train', name=None):
@@ -143,6 +153,7 @@ class CaptionGenerator(object):
 
         captions_in = captions[:, :self.T]
         captions_out = captions[:, 1:]
+        #print('captions_out:',captions_out.shape,'\n', captions)
         mask = tf.to_float(tf.not_equal(captions_out, self._null))
 
 
@@ -150,6 +161,7 @@ class CaptionGenerator(object):
         features = self._batch_norm(features, mode='train', name='conv_features')
 
         c, h = self._get_initial_lstm(features=features)
+
         x = self._word_embedding(inputs=captions_in)
         features_proj = self._project_features(features=features)
 
@@ -169,8 +181,9 @@ class CaptionGenerator(object):
                 _, (c, h) = lstm_cell(inputs=tf.concat( [x[:,t,:], context],1), state=[c, h])
 
             logits = self._decode_lstm(x[:,t,:], h, context, dropout=self.dropout, reuse=(t!=0))
-
+            # print(logits)
             loss += tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=captions_out[:, t],logits=logits)*mask[:, t] )
+            # loss = tf.Print(loss, [loss], 'loss=', summarize=20, first_n=3)
 
         if self.alpha_c > 0:
             alphas = tf.transpose(tf.stack(alpha_list), (1, 0, 2))     # (N, T, L)
@@ -180,7 +193,7 @@ class CaptionGenerator(object):
 
         return loss / tf.to_float(batch_size)
 
-    def build_sampler(self, max_len=20):
+    def build_sampler(self, max_len=25):
         features = self.features
 
         # batch normalize feature vectors

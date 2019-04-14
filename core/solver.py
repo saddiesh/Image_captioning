@@ -8,6 +8,8 @@ import pickle as pickle
 from scipy import ndimage
 from core.utils import *
 from core.bleu import evaluate
+import sys
+np.set_printoptions(threshold = sys.maxsize)
 
 
 class CaptioningSolver(object):
@@ -80,7 +82,7 @@ class CaptioningSolver(object):
         with tf.variable_scope(tf.get_variable_scope()):
             loss = self.model.build_model()
             tf.get_variable_scope().reuse_variables()
-            _, _, generated_captions = self.model.build_sampler(max_len=20)
+            _, _, generated_captions = self.model.build_sampler(max_len=25)
 
         # train op
         with tf.variable_scope(tf.get_variable_scope(), reuse=False):
@@ -131,16 +133,17 @@ class CaptioningSolver(object):
 
                 for i in range(n_iters_per_epoch):
                     captions_batch = captions[i*self.batch_size:(i+1)*self.batch_size]
+                    # print('captions_batch:',captions_batch)
                     image_idxs_batch = image_idxs[i*self.batch_size:(i+1)*self.batch_size]
                     features_batch = features[image_idxs_batch]
                     feed_dict = {self.model.features: features_batch, self.model.captions: captions_batch}
                     _, l = sess.run([train_op, loss], feed_dict)
                     curr_loss += l
 
-                    # write summary for tensorboard visualization
-                    if i % 10 == 0:
-                        summary = sess.run(summary_op, feed_dict)
-                        summary_writer.add_summary(summary, e*n_iters_per_epoch + i)
+                    # # write summary for tensorboard visualization
+                    # if i % 10 == 0:
+                    #     summary = sess.run(summary_op, feed_dict)
+                    #     summary_writer.add_summary(summary, e*n_iters_per_epoch + i)
 
                     if (i+1) % self.print_every == 0:
                         print ("\nTrain loss at epoch %d & iteration %d (mini-batch): %.5f" %(e+1, i+1, l))
@@ -181,7 +184,7 @@ class CaptioningSolver(object):
                     print ("model-%s saved." %(e+1))
 
 
-    def test(self, data, split='train', attention_visualization=True, save_sampled_captions=True):
+    def test(self, data, split='train', attention_visualization=True, save_sampled_captions=False):
         '''
         Args:
             - data: dictionary with the following keys:
@@ -198,20 +201,21 @@ class CaptioningSolver(object):
         features = data['features']
 
         # build a graph to sample captions
-        alphas, betas, sampled_captions = self.model.build_sampler(max_len=20)    # (N, max_len, L), (N, max_len)
+        alphas, betas, sampled_captions = self.model.build_sampler(max_len=25)    # (N, max_len, L), (N, max_len)
 
         config = tf.ConfigProto(allow_soft_placement=True)
         config.gpu_options.allow_growth = True
         with tf.Session(config=config) as sess:
             saver = tf.train.Saver()
             saver.restore(sess, self.test_model)
-            features_batch, image_files = sample_coco_minibatch(data, self.batch_size)
+            features_batch, image_files = data['features'],data['file_names']
             feed_dict = { self.model.features: features_batch }
             alps, bts, sam_cap = sess.run([alphas, betas, sampled_captions], feed_dict)  # (N, max_len, L), (N, max_len)
             decoded = decode_captions(sam_cap, self.model.idx_to_word)
+            save_pickle(decoded, r".\image_data_to_be_labeled\Object_feature\our_data\train\val.candidate.captions.pkl")
 
             if attention_visualization:
-                for n in range(100):
+                for n in range(len(image_files)):
                     print ("Sampled Caption: %s" %decoded[n])
 
                     # Plot original image
@@ -228,11 +232,24 @@ class CaptioningSolver(object):
                         plt.subplot(4, 5, t+2)
                         plt.text(0, 1, '%s(%.2f)'%(words[t], bts[n,t]) , color='black', backgroundcolor='white', fontsize=8)
                         plt.imshow(img)
-                        alp_curr = alps[n,t,:].reshape(14,14)
+                        alp_curr = alps[n,t,:196].reshape(14,14)
                         alp_img = skimage.transform.pyramid_expand(alp_curr, upscale=16, sigma=20)
                         plt.imshow(alp_img, alpha=0.85)
                         plt.axis('off')
-                    plt.show()
+                    plt.suptitle(decoded[n])
+                    savename = 'caption_' + os.path.basename(image_files[n]).rstrip('.jpg') + '.png'
+                    plt.savefig(os.path.join(
+                        r'C:\Users\song\Desktop\511project\show-attend-and-tell-tensorflow\image_data_to_be_labeled\Object_feature\results',
+                        savename))
+                    plt.close('all')
+                    # plt.show()
+
+            ref_path = r'.\image_data_to_be_labeled\Object_feature\our_data\train\train.references.pkl'
+            cand_path = r'.\image_data_to_be_labeled\Object_feature\our_data\train\val.candidate.captions.pkl'
+
+            scores = evaluate(ref_path, cand_path, get_scores=True)
+            #write_bleu(scores=scores, path=self.model_path, epoch=e)
+
 
             if save_sampled_captions:
                 all_sam_cap = np.ndarray((features.shape[0], 20))
