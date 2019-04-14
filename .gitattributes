@@ -1,0 +1,2 @@
+Object_feature/our_data/train/train.features.hkl filter=lfs diff=lfs merge=lfs -text
+Object_feature/our_data/train/train.vggfeatures.hkl filter=lfs diff=lfs merge=lfs -text
